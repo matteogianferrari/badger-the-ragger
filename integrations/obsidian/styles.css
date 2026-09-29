@@ -1,0 +1,12 @@
+.badger-form { display: flex; gap: 0.5rem; }
+.badger-query { flex: 1; min-width: 0; }
+.badger-results { max-height: 60vh; overflow-y: auto; }
+.badger-result { padding: 0.8rem 0; border-bottom: 1px solid var(--background-modifier-border); }
+.badger-result-header { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.badger-score { color: #ffe14d; font-weight: bold; font-variant-numeric: tabular-nums; }
+.badger-note-link { font-weight: 600; text-align: left; }
+.badger-paragraph { overflow-wrap: anywhere; margin: 0.4rem 0 0; }
+.badger-paragraph > :first-child { margin-top: 0; }
+.badger-paragraph > :last-child { margin-bottom: 0; }
+.badger-paragraph .math-block { overflow-x: auto; }
+.badger-error { color: var(--text-error); }

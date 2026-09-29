@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "badger-the-ragger"
+version = "0.2.3"
+description = "Incremental semantic search over Markdown Zettelkasten notes"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26,<3",
+    "sentence-transformers>=5.0,<7",
+    "transformers>=4.51.0,<6",
+]
+
+[project.scripts]
+badger = "badger_ragger.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

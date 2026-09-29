@@ -1,0 +1,9 @@
+{
+  "id": "badger-the-ragger",
+  "name": "Badger the Ragger",
+  "version": "0.2.3",
+  "minAppVersion": "1.4.0",
+  "description": "Find related paragraphs in your notes with a local embedding model.",
+  "author": "Badger the Ragger",
+  "isDesktopOnly": true
+}
