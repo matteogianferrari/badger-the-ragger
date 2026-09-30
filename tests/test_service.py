@@ -46,7 +46,8 @@ class ServiceTests(unittest.TestCase):
         self.notes = root / "notes"
         self.notes.mkdir()
         (self.notes / "a.md").write_text(
-            "# Heading\n\nPatching an image makes smaller visual tokens.", encoding="utf-8"
+            "Note Status: Completed\n\n# Heading\n\n"
+            "Patching an image makes smaller visual tokens.", encoding="utf-8"
         )
         self.config = Config(self.notes, root / "index.sqlite3")
         self.model = TestEmbedder()
@@ -107,7 +108,10 @@ class ServiceTests(unittest.TestCase):
             "paragraph": "Patching an image makes smaller visual tokens.",
         }])
 
-        (self.notes / "a.md").write_text("Patching transforms image sequences efficiently.", encoding="utf-8")
+        (self.notes / "a.md").write_text(
+            "Note Status: Completed\n\nPatching transforms image sequences efficiently.",
+            encoding="utf-8",
+        )
         code, body = self.request("POST", "/search", {"query": "patching"})
         self.assertEqual(code, 409)
         self.assertEqual(body["status"]["changed"], ["a.md"])
@@ -117,6 +121,57 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(body["embedded_paragraphs"], 1)
         self.assertEqual(self.factory_calls, 1)
         self.assertEqual(self.model.document_calls, 2)
+
+    def test_in_progress_notes_do_not_invalidate_the_index(self) -> None:
+        """Only the transition to Completed adds vectors; later edits refresh them."""
+        draft = self.notes / "draft.md"
+        draft.write_text(
+            "29/09/2026 10:00\nNote Status: #in-progress\nTags: #ideas\n\n"
+            "A preliminary thought about patching images.", encoding="utf-8"
+        )
+        (self.notes / "unmarked.md").write_text(
+            "This note does not declare a status and is not searchable.", encoding="utf-8"
+        )
+        self.assertEqual(self.request("GET", "/status")[1]["status"]["new"], ["a.md"])
+        self.assertEqual(self.request("POST", "/index", {})[1]["embedded_paragraphs"], 1)
+        self.assertEqual(self.model.document_calls, 1)
+
+        draft.write_text(
+            "29/09/2026 10:05\nNote Status: #in-progress\nTags: #ideas\n\n"
+            "A revised preliminary thought about patching images.", encoding="utf-8"
+        )
+        status = self.request("GET", "/status")[1]["status"]
+        self.assertFalse(status["needs_update"])
+        self.assertEqual(self.request("POST", "/index", {})[1]["embedded_paragraphs"], 0)
+        self.assertEqual(self.model.document_calls, 1)
+        self.assertEqual(len(self.request("POST", "/search", {"query": "patching"})[1]["results"]), 1)
+
+        draft.write_text(
+            "29/09/2026 10:06\nNote Status: Completed\nTags: #ideas\n\n"
+            "A finished thought about patching images.", encoding="utf-8"
+        )
+        self.assertEqual(self.request("GET", "/status")[1]["status"]["new"], ["draft.md"])
+        self.assertEqual(self.request("POST", "/index", {})[1]["embedded_paragraphs"], 1)
+        self.assertEqual(self.model.document_calls, 2)
+
+        draft.write_text(
+            "29/09/2026 10:07\nNote Status: Completed\nTags: #ideas\n\n"
+            "Another finished thought about patching images.", encoding="utf-8"
+        )
+        self.assertEqual(self.request("GET", "/status")[1]["status"]["changed"], ["draft.md"])
+        self.assertEqual(self.request("POST", "/index", {})[1]["embedded_paragraphs"], 1)
+        self.assertEqual(self.model.document_calls, 3)
+
+        draft.write_text(
+            "29/09/2026 10:08\nNote Status: #in-progress\nTags: #ideas\n\n"
+            "This unfinished idea is no longer searchable.", encoding="utf-8"
+        )
+        self.assertEqual(self.request("GET", "/status")[1]["status"]["removed"], ["draft.md"])
+        self.assertFalse(self.request("GET", "/status")[1]["status"]["rebuild"])
+        self.assertEqual(self.request("POST", "/index", {})[1]["embedded_paragraphs"], 0)
+        self.assertEqual(self.model.document_calls, 3)
+        self.assertEqual(self.request("POST", "/index", {})[1]["indexed_notes"], 1)
+
 
     def test_http_validation_and_token(self) -> None:
         """Reject unauthenticated, invalid, and unexpectedly large requests."""

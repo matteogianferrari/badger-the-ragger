@@ -6,7 +6,7 @@ index_path = ".badger/index.sqlite3"
 model_name = "Qwen/Qwen3-Embedding-0.6B"
 device = "auto" # auto, cpu, cuda, cuda:0, mps, etc.
 batch_size = 32
-min_paragraph_chars = 90
+min_paragraph_chars = 20
 top_k = 10
 # If notes_root is a SilverBullet space, exclude its script/config pages here.
 # exclude_globs = ["CONFIG.md", "Library/**", "Badger.md"]

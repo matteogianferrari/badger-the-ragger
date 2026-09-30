@@ -1,5 +1,7 @@
 # Badger the Ragger
 
+<img src="assets/badger-icon.png" alt="Badger the Ragger icon" width="180">
+
 Badger searches Markdown Zettelkasten notes by meaning. It saves one embedding
 per meaningful paragraph, then returns **one result per note**: the paragraph
 with that note's highest cosine similarity to your query. The output is the
@@ -65,8 +67,8 @@ full rebuild commands. Its side panel shows the full `score; note; paragraph`
 record and a link to each note. SilverBullet sends requests from its server,
 so the Badger URL must be reachable from that server.
 
-Both interfaces show all affected names when SHA-256 detects changes. They
-require an explicit index action before showing results from changed notes.
+Both interfaces show affected Completed note names when SHA-256 detects changes.
+They require an explicit index action before showing results from changed notes.
 
 ### Local JSON API
 
@@ -94,12 +96,30 @@ produced that note's score. Embedded newlines and backslashes in a paragraph
 are escaped as `\n` and `\\` so each result stays on one line. Semicolons in
 the paragraph are part of its text.
 
-Run `badger index` after editing, adding, or deleting notes. It compares each
-file's current SHA-256 with the saved hash, reports the affected file names,
-and only embeds paragraphs from new or changed notes. Removed notes disappear
-from the index. A note without a substantive paragraph is still recorded, so
-it is not repeatedly processed. Index updates are transactional: a model
-failure leaves the previous index intact.
+Badger scans Markdown notes whose leading metadata block or YAML front matter
+contains exactly one `Note Status: Completed` field. For example:
+
+```markdown
+29/09/2026 10:06
+Note Status: Completed
+Tags: #ideas
+
+The actual note begins here.
+```
+
+Notes marked `Note Status: #in-progress`, notes without a status, and notes
+with conflicting status fields are excluded. An edit to an in-progress note
+does not change index status or trigger embedding. When its status becomes
+Completed, `badger status` reports it as new and `badger index` embeds its
+paragraphs. Later edits to a Completed note are reported as changed and only
+that note is re-embedded. If a Completed note becomes in-progress, the next
+index action removes its old paragraphs without loading the model.
+
+Run `badger index` after editing, adding, deleting, or completing notes. It
+compares each eligible file's current SHA-256 with the saved hash and reports
+the affected file names. A Completed note without a substantive paragraph is
+still recorded, so it is not repeatedly processed. Index updates are
+transactional: a model failure leaves the previous index intact.
 
 `badger search` and each `badger repl` query check the file hashes before
 inference. If the index is stale, Badger prints the affected file names and
@@ -148,9 +168,10 @@ prompt, device, batch size, or `top_k` does not change saved document vectors.
 If the upstream model behind the same `model_name` has changed, run
 `badger index --rebuild` manually.
 
-The paragraph splitter changed in version 0.2.2. After upgrading, restart a
-running `badger serve` process and use **Update note embeddings** in the editor
-or run `badger index` once; Badger will rebuild the index automatically.
+After upgrading to version 0.2.4, restart a running `badger serve` process and
+use **Update note embeddings** in the editor or run `badger index` once. Notes
+that are no longer eligible appear as removed. Unchanged Completed notes retain
+their existing embeddings; a full rebuild is unnecessary.
 
 ## Development
 

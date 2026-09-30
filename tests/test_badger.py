@@ -18,7 +18,7 @@ from badger_ragger.config import Config, load_config
 from badger_ragger.index import (
     connect_index, inspect_index, load_paragraphs, paragraph_count, update_index,
 )
-from badger_ragger.notes import scan_notes, split_paragraphs
+from badger_ragger.notes import is_completed_note, scan_notes, split_paragraphs
 from badger_ragger.search import rank_notes
 
 
@@ -56,13 +56,14 @@ class BadgerTest(unittest.TestCase):
         self.notes.mkdir()
         self.config = Config(self.notes, self.root / "index.sqlite3")
         (self.notes / "a.md").write_text(
-            "---\ntags: [idea]\n---\n\n# Introduction\n\n"
+            "---\nNote Status: Completed\ntags: [idea]\n---\n\n# Introduction\n\n"
             "Patching an image divides it into smaller pieces.\n\n"
             "# Transformer\n\nTransformer architectures process sequences of text.",
             encoding="utf-8",
         )
         (self.notes / "b.md").write_text(
-            "Some ideas concern algorithms for learning from sequences.", encoding="utf-8"
+            "Note Status: Completed\n\nSome ideas concern algorithms for learning from sequences.",
+            encoding="utf-8",
         )
 
     def build(self, model: FakeEmbedder | None = None) -> FakeEmbedder:
@@ -78,6 +79,26 @@ class BadgerTest(unittest.TestCase):
         """Keep meaningful text and preserve exact displayed passage content."""
         text = "---\r\ntags: [idea]\r\n---\r\n\r\n# Introduction\r\n\r\nHi\r\n\r\nAn actual paragraph about conceptual links."
         self.assertEqual(split_paragraphs(text, 20), ["An actual paragraph about conceptual links."])
+
+    def test_only_an_explicit_completed_header_is_eligible(self) -> None:
+        """Support the vault preamble and YAML while excluding drafts and ambiguity."""
+        cases = (
+            (b"\xef\xbb\xbf29/09/2026 10:06\r\nNote Status: Completed\r\n\r\nText", True),
+            (b"---\nNote Status: completed\ntags: [idea]\n---\n\nText", True),
+            (b"Note Status: #in-progress\n\nText", False),
+            (b"---\nNote Status: #in-progress\n---\n\nText", False),
+            (b"Note Status: Completed\nNote Status: #in-progress\n\nText", False),
+            (b"# Introduction\n\nNote Status: Completed\n\nText", False),
+            (b"Text without a status", False),
+        )
+        for content, expected in cases:
+            with self.subTest(content=content):
+                self.assertEqual(is_completed_note(content, "sample.md"), expected)
+
+        (self.notes / "draft.md").write_text(
+            "Note Status: #in-progress\n\nA draft about models.", encoding="utf-8"
+        )
+        self.assertEqual(sorted(scan_notes(self.notes)), ["a.md", "b.md"])
 
     def test_vault_preamble_embeds_references_and_math(self) -> None:
         """Ignore note scaffolding without splitting a displayed equation."""
@@ -115,13 +136,17 @@ class BadgerTest(unittest.TestCase):
                 "SELECT embedding FROM paragraphs WHERE note_name = 'b.md'"
             ).fetchone()[0]
         (self.notes / "a.md").write_text(
-            "A revised passage about patching and visual tokens.", encoding="utf-8"
+            "Note Status: Completed\n\nA revised passage about patching and visual tokens.",
+            encoding="utf-8",
         )
         (self.notes / "sub").mkdir()
         (self.notes / "sub" / "c.md").write_text(
-            "New paragraphs connect unrelated ideas across notes.", encoding="utf-8"
+            "Note Status: Completed\n\nNew paragraphs connect unrelated ideas across notes.",
+            encoding="utf-8",
         )
-        (self.notes / "headings.md").write_text("# Only a heading", encoding="utf-8")
+        (self.notes / "headings.md").write_text(
+            "Note Status: Completed\n\n# Only a heading", encoding="utf-8"
+        )
         model = FakeEmbedder()
         snapshots = scan_notes(self.notes)
         with closing(connect_index(self.config.index_path, write=True)) as conn:
@@ -148,7 +173,10 @@ class BadgerTest(unittest.TestCase):
     def test_embedding_failure_preserves_previous_index(self) -> None:
         """A failed model call must leave every saved hash and passage intact."""
         self.build()
-        (self.notes / "b.md").write_text("Patching has changed this passage significantly.", encoding="utf-8")
+        (self.notes / "b.md").write_text(
+            "Note Status: Completed\n\nPatching has changed this passage significantly.",
+            encoding="utf-8",
+        )
 
         class BrokenEmbedder(FakeEmbedder):
             def documents(self, texts: list[str]) -> np.ndarray:
@@ -188,10 +216,14 @@ class BadgerTest(unittest.TestCase):
 
     def test_configured_exclusions_skip_non_note_pages(self) -> None:
         """Meta pages are not hashed or embedded when explicitly excluded."""
-        (self.notes / "CONFIG.md").write_text("This page contains configuration settings.", encoding="utf-8")
+        (self.notes / "CONFIG.md").write_text(
+            "Note Status: Completed\n\nThis page contains configuration settings.",
+            encoding="utf-8",
+        )
         (self.notes / "Library").mkdir()
         (self.notes / "Library" / "Badger.md").write_text(
-            "This page contains Space Lua integration code.", encoding="utf-8"
+            "Note Status: Completed\n\nThis page contains Space Lua integration code.",
+            encoding="utf-8",
         )
         names = scan_notes(self.notes, ("CONFIG.md", "Library/**"))
         self.assertEqual(sorted(names), ["a.md", "b.md"])
@@ -207,7 +239,10 @@ class BadgerTest(unittest.TestCase):
             with redirect_stdout(out), redirect_stderr(err):
                 self.assertEqual(main(["--config", str(settings), "search", "patching", "-k", "1"]), 0)
         self.assertEqual(out.getvalue().strip(), "1.0000; a.md; Patching an image divides it into smaller pieces.")
-        (self.notes / "b.md").write_text("An entirely new passage about patching algorithms.", encoding="utf-8")
+        (self.notes / "b.md").write_text(
+            "Note Status: Completed\n\nAn entirely new passage about patching algorithms.",
+            encoding="utf-8",
+        )
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             self.assertEqual(main(["--config", str(settings), "search", "patching"]), 2)

@@ -6,6 +6,13 @@ in Community plugins. Start `badger serve` separately before using it.
 If you already have the plugin installed, replace those three files and reload
 the plugin in Obsidian.
 
+Badger indexes only notes whose leading metadata or YAML front matter contains
+`Note Status: Completed`. Editing a `Note Status: #in-progress` note does not
+make search stale; completing it makes it eligible at the next **Update note
+embeddings** action. Changes to Completed notes re-embed just those notes.
+After upgrading, restart `badger serve` and update the index once to remove
+previously indexed in-progress notes without re-embedding unchanged notes.
+
 In the plugin settings, set **Notes folder** to the directory inside the
 Obsidian vault that corresponds to `notes_root` in `badger.toml`. The default
 is `Zettelkasten`; use an empty setting if `notes_root` is the vault root.

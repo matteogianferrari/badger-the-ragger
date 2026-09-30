@@ -18,6 +18,7 @@ _EMBED = re.compile(r"^!\[\[[^\]]+\]\]$")
 _CITATION = re.compile(r"^\[\[@[^\]]+\]\]$")
 _NOTE_DATE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}(?:[ \t]+\d{1,2}:\d{2})?[ \t]*$")
 _NOTE_FIELD = re.compile(r"^(?:Note Status|Tags):", re.IGNORECASE)
+_STATUS_LINE = re.compile(r"^[ \t]*Note Status:[ \t]*(.*?)[ \t]*$", re.IGNORECASE | re.MULTILINE)
 _MARKUP = re.compile(r"[#*_`~>\[\]()!|]")
 
 
@@ -39,7 +40,7 @@ class NoteSnapshot:
 
 
 def scan_notes(root: Path, exclude_globs: tuple[str, ...] = ()) -> dict[str, NoteSnapshot]:
-    """Hash Markdown notes recursively, skipping configured non-note pages."""
+    """Hash only Completed Markdown notes, skipping configured non-note pages."""
     snapshots: dict[str, NoteSnapshot] = {}
     for path in sorted(root.rglob("*.md")):
         if path.is_file():
@@ -47,8 +48,33 @@ def scan_notes(root: Path, exclude_globs: tuple[str, ...] = ()) -> dict[str, Not
             if any(fnmatchcase(name, pattern) for pattern in exclude_globs):
                 continue
             content = path.read_bytes()
+            if not is_completed_note(content, name):
+                continue
             snapshots[name] = NoteSnapshot(name, sha256(content).hexdigest(), content)
     return snapshots
+
+
+def is_completed_note(content: bytes, name: str) -> bool:
+    """Check the note header for one explicit Completed status.
+
+    Both this vault's leading date/status block and YAML front matter are
+    supported. Missing, ambiguous, or other statuses are not searchable.
+    """
+    try:
+        text = content.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Note is not UTF-8: {name}") from exc
+    if text.startswith("---\n"):
+        closing = re.search(r"(?m)^---[ \t]*$", text[4:])
+        if closing is not None:
+            header = text[4:4 + closing.start()]
+        else:
+            header = ""
+    else:
+        boundary = _BLANK_LINES.search(text)
+        header = text[:boundary.start()] if boundary else text
+    statuses = [match.group(1).strip().casefold() for match in _STATUS_LINE.finditer(header)]
+    return statuses == ["completed"]
 
 
 def _without_note_header(text: str) -> str:
@@ -56,7 +82,7 @@ def _without_note_header(text: str) -> str:
     boundary = _BLANK_LINES.search(text)
     head = text[:boundary.start()] if boundary else text
     lines = [line.strip() for line in head.splitlines()]
-    if lines and _NOTE_DATE.fullmatch(lines[0]) and all(
+    if lines and (_NOTE_DATE.fullmatch(lines[0]) or _NOTE_FIELD.match(lines[0])) and all(
         _NOTE_FIELD.match(line) for line in lines[1:]
     ):
         return text[boundary.end():] if boundary else ""

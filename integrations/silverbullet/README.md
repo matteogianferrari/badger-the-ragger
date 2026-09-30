@@ -11,6 +11,13 @@ whose root *is* `notes_root`, use `notePrefix = ""`. In the latter case, add
 `exclude_globs = ["Badger.md", "CONFIG.md", "Library/**"]` to `badger.toml`
 so configuration pages and this script are not embedded as ordinary notes.
 
+Only notes with `Note Status: Completed` in their leading metadata or YAML
+front matter are indexed. Editing a `Note Status: #in-progress` page leaves
+the index current; completing it makes it eligible for **Badger: Update note
+embeddings**. Later changes to a Completed page re-embed that page alone.
+After upgrading, restart `badger serve` and update the index once to remove
+previously indexed in-progress pages without re-embedding unchanged pages.
+
 Open the SilverBullet command palette to run **Badger: Search**, **Badger:
 Check note changes**, **Badger: Update note embeddings**, or **Badger: Rebuild
 all embeddings**. Results appear in a side panel as complete one-line
